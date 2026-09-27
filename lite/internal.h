@@ -18,7 +18,6 @@ extern char* amPassword;
 extern char* device_infos[9];
 
 int file_exists(const char* path);
-bool read_stdin_line(std::string& value, size_t max_length, bool hide_input);
 void set_credentials(const char* user, const char* pass);
 void dialogHandler(long j, struct shared_ptr* protoDialogPtr, struct shared_ptr* respHandler);
 void credentialHandler(struct shared_ptr* credReqPtr, struct shared_ptr* credRespHandler);

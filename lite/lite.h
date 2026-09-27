@@ -101,6 +101,7 @@ extern bool g_ssl_verify_disabled;
 extern bool g_code_from_file;
 extern bool g_code_from_stdin;
 
+bool read_stdin_line(std::string& value, size_t max_length, bool hide_input);
 void install_hooks();
 struct shared_ptr init_ctx();
 bool login(struct shared_ptr ctx);
