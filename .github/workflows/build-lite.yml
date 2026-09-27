@@ -209,12 +209,13 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          set -euo pipefail
           if [[ "${{ runner.os }}" == "macOS" ]]; then
+            set -euo pipefail
             cp -R "$(brew --prefix qemu)/share/qemu/." dist/qemu/bin/
             bash .github/scripts/bundle-macos-qemu.sh "$(command -v qemu-system-x86_64)" dist/qemu
             codesign --force --sign - dist/wrapper-lite-qemu
           else
+            set +e  # Linux bundle sub-steps remain best-effort for distro variance.
             cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/
             # bundle QEMU firmware + SeaBIOS + option ROMs so the launcher's
             # `-L dist/qemu/bin` is self-contained
