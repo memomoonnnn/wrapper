@@ -40,8 +40,8 @@ done
 /bin/busybox mkdir -p /run
 /bin/busybox rm -f /run/lite-qemu-args
 /bin/busybox insmod /qemu_fw_cfg.ko 2>/dev/null || true
-if [ -f /sys/firmware/qemu_fw_cfg/by_name/lite_args/raw ]; then
-    /bin/busybox cat /sys/firmware/qemu_fw_cfg/by_name/lite_args/raw > /run/lite-qemu-args
+if [ -f /sys/firmware/qemu_fw_cfg/by_name/opt/lite_args/raw ]; then
+    /bin/busybox cat /sys/firmware/qemu_fw_cfg/by_name/opt/lite_args/raw > /run/lite-qemu-args
 fi
 
 /bin/busybox chmod +x /system/bin/lite /system/bin/linker64 2>/dev/null || true

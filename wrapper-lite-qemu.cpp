@@ -300,7 +300,7 @@ static std::vector<std::string> buildQemuArgs(const std::string& qemuBin,
     std::ifstream af(argsFile);
     if (af.peek() != std::ifstream::traits_type::eof()) {
         args.push_back("-fw_cfg");
-        args.push_back("name=lite_args,file=" + argsFile);
+        args.push_back("name=opt/lite_args,file=" + argsFile);
     }
     return args;
 }
