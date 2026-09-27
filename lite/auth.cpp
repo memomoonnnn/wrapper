@@ -148,9 +148,7 @@ void credentialHandler(struct shared_ptr* credReqPtr,
     _ZN17storeservicescore19CredentialsResponse11setUserNameERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(credResp.obj, &username);
     union std_string password = new_std_string(amPassword ? amPassword : "");
     _ZN17storeservicescore19CredentialsResponse11setPasswordERKNSt6__ndk112basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEE(credResp.obj, &password);
-    LOG_DEBUG("cred submit: user=%.32s len=%zu pass_len=%zu",
-              amUsername ? amUsername : "(null)", username.size,
-              amPassword ? strlen(amPassword) : 0);
+    LOG_DEBUG("credential response prepared");
 
     _ZN17storeservicescore19CredentialsResponse15setResponseTypeENS0_12ResponseTypeE(credResp.obj, 2);
     _ZN20androidstoreservices28AndroidPresentationInterface25handleCredentialsResponseERKNSt6__ndk110shared_ptrIN17storeservicescore19CredentialsResponseEEE(apInf.obj, &credResp);
