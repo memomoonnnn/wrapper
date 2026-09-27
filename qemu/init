@@ -5,6 +5,7 @@
 /bin/busybox mount -t devtmpfs devtmpfs /dev
 /bin/busybox mkdir -p /dev/pts
 /bin/busybox mount -t devpts devpts /dev/pts 2>/dev/null || true
+/bin/busybox stty -echo < /dev/console 2>/dev/null || true
 /bin/busybox hostname wrapper-lite
 
 # NIC
@@ -34,29 +35,20 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 done
 /bin/busybox mount -t ext4 /dev/vda /data 2>/dev/null || echo "[init] data disk mount failed"
 
-# Host-provided lite args, one argument per line.
-/bin/busybox rm -f /data/.lite-qemu-args
+# Host-provided non-sensitive lite args, one argument per line. Keep them in
+# the initramfs rather than on the persistent data disk.
+/bin/busybox mkdir -p /run
+/bin/busybox rm -f /run/lite-qemu-args
 /bin/busybox insmod /qemu_fw_cfg.ko 2>/dev/null || true
 if [ -f /sys/firmware/qemu_fw_cfg/by_name/lite_args/raw ]; then
-    /bin/busybox cat /sys/firmware/qemu_fw_cfg/by_name/lite_args/raw > /data/.lite-qemu-args
-fi
-
-# Fallback: kernel cmdline base64 (only if base64 applet is available)
-if [ ! -s /data/.lite-qemu-args ] && /bin/busybox base64 --help >/dev/null 2>&1; then
-    for w in $(cat /proc/cmdline); do
-        case "$w" in
-            lite_args_b64=*)
-                echo "${w#lite_args_b64=}" | /bin/busybox base64 -d > /data/.lite-qemu-args
-            ;;
-        esac
-    done
+    /bin/busybox cat /sys/firmware/qemu_fw_cfg/by_name/lite_args/raw > /run/lite-qemu-args
 fi
 
 /bin/busybox chmod +x /system/bin/lite /system/bin/linker64 2>/dev/null || true
 
-if [ -s /data/.lite-qemu-args ]; then
+if [ -s /run/lite-qemu-args ]; then
     echo "[init] wrapper-lite QEMU guest (custom args from file)"
-    LITE_ARGS_FILE=/data/.lite-qemu-args /system/bin/lite
+    LITE_ARGS_FILE=/run/lite-qemu-args /system/bin/lite
     echo "[init] lite exited, powering off..."
     /bin/busybox poweroff -f
 else

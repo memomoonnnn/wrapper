@@ -4,7 +4,38 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <termios.h>
 #include <unistd.h>
+
+bool read_stdin_line(std::string& value, size_t max_length, bool hide_input) {
+    termios original;
+    bool restore_terminal = false;
+    if (hide_input && tcgetattr(STDIN_FILENO, &original) == 0) {
+        termios hidden = original;
+        hidden.c_lflag &= ~ECHO;
+        restore_terminal = tcsetattr(STDIN_FILENO, TCSANOW, &hidden) == 0;
+    }
+
+    char* line = nullptr;
+    size_t capacity = 0;
+    ssize_t length = getline(&line, &capacity, stdin);
+    if (restore_terminal) tcsetattr(STDIN_FILENO, TCSANOW, &original);
+    if (length < 0) {
+        free(line);
+        return false;
+    }
+    while (length > 0 && (line[length - 1] == '\n' || line[length - 1] == '\r')) {
+        --length;
+    }
+    bool valid = static_cast<size_t>(length) <= max_length;
+    if (valid) value.assign(line, static_cast<size_t>(length));
+    if (line) {
+        volatile char* sensitive = line;
+        for (size_t i = 0; i < capacity; ++i) sensitive[i] = 0;
+    }
+    free(line);
+    return valid;
+}
 
 void dialogHandler(long j, struct shared_ptr* protoDialogPtr,
                    struct shared_ptr* respHandler) {
@@ -61,16 +92,18 @@ void credentialHandler(struct shared_ptr* credReqPtr,
     if (need2FA) {
         std::string path = std::string(g_base_dir) + "/2fa.txt";
         bool got_code = false;
-        if (!g_code_from_file && isatty(STDIN_FILENO)) {
-            char code[7];
-            printf("2FA code: ");
-            fflush(stdout);
-            if (scanf("%6s", code) == 1 && amPassword) {
-                char tmp[64];
-                snprintf(tmp, sizeof(tmp), "%s%s", amPassword, code);
+        if (g_code_from_stdin || (!g_code_from_file && isatty(STDIN_FILENO))) {
+            LOG_INFO("waiting for 2FA code on stdin");
+            std::string code;
+            if (read_stdin_line(code, 6, true) && !code.empty() && amPassword) {
+                std::string combined(amPassword);
+                combined += code;
                 free(amPassword);
-                amPassword = strdup(tmp);
+                amPassword = strdup(combined.c_str());
                 got_code = true;
+            } else if (g_code_from_stdin) {
+                LOG_WARN("failed to read 2FA code from stdin");
+                exit(1);
             }
         }
         if (!got_code) {

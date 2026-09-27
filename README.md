@@ -33,7 +33,7 @@ Build outputs:
 
 ```bash
 # Login, cache tokens, then exit
-./wrapper-lite-rootless --login user:pass --code-from-file --base-dir /data
+./wrapper-lite-rootless --login-stdin --base-dir /data
 
 # Start the HTTP service
 ./wrapper-lite-rootless --base-dir /data --host 0.0.0.0 --port 12340
@@ -41,7 +41,9 @@ Build outputs:
 
 2FA code:
 
-- Interactive prompt when a TTY is available.
+- `--login-stdin` reads the code from the same standard-input stream after the
+  username and password.
+- Legacy interactive login prompts when a TTY is available.
 - With `--code-from-file`, the code is read from `data/2fa.txt`.
 
 ## Run with QEMU (recommended)
@@ -56,10 +58,14 @@ Android.
 # one-time: build the launcher (or download a prebuilt release)
 c++ -std=c++11 -O2 -o wrapper-lite-qemu wrapper-lite-qemu.cpp
 
-# login first (forwards --login to the guest lite), then serve
-./wrapper-lite-qemu --login user:pass --code-from-file
+# login first; write username, password, then any requested 2FA code to stdin
+./wrapper-lite-qemu --login-stdin
 ./wrapper-lite-qemu
 ```
+
+The QEMU launcher rejects `--login user:pass` because QEMU arguments are visible
+to other local processes. `--login-stdin` keeps credentials out of arguments,
+temporary files, the kernel command line, and the persistent `data.img`.
 
 The launcher locates the QEMU binary in this order:
 
@@ -114,6 +120,7 @@ All responses use:
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `--login user:pass` | — | login, cache tokens, then exit |
+| `--login-stdin` | off | read username, password, and any requested 2FA code from stdin |
 | `--code-from-file` | off | read 2FA code from file |
 | `--host` | `127.0.0.1` | listen address |
 | `--port` | `12340` | listen port |

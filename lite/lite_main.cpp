@@ -35,6 +35,7 @@ extern "C" void freeifaddrs(struct ifaddrs* __ptr) { }
 static std::string g_host = "127.0.0.1";
 static int g_port = 12340;
 static bool g_login_only = false;
+static bool g_login_from_stdin = false;
 static std::string g_login_credentials;
 static std::string g_proxy;
 /* Device info: <client>/<version>/<platform>/<osver>/<model>/<build>/<locale>/<lang>/<android-id>.
@@ -463,7 +464,7 @@ static void signal_worker() {
 /* ============================== */
 
 static void print_usage() {
-    LOG_INFO("usage: lite [--login user:pass] [--host 127.0.0.1] [--port 12340]");
+    LOG_INFO("usage: lite [--login user:pass | --login-stdin] [--host 127.0.0.1] [--port 12340]");
     LOG_INFO("            [--device-info STR] [--base-dir data] [--proxy URL] [--debug]");
     LOG_INFO("            [--log-level debug|info|warn|error] [--log-file PATH]");
     LOG_INFO("            [--token-refresh-interval SECONDS]");
@@ -517,6 +518,11 @@ int main(int argc, char* argv[]) {
             g_login_only = true;
             g_login_credentials = cmdline_args[++i];
         }
+        else if (arg == "--login-stdin") {
+            g_login_only = true;
+            g_login_from_stdin = true;
+            g_code_from_stdin = true;
+        }
         else if (arg == "--device-info" && i + 1 < cmdline_args.size()) g_device_info_override = cmdline_args[++i];
         else if (arg == "--base-dir" && i + 1 < cmdline_args.size()) g_base_dir = cmdline_args[++i];
         else if (arg == "--help" || arg == "-h") {
@@ -536,14 +542,32 @@ int main(int argc, char* argv[]) {
     g_tokens.base_dir = g_base_dir;
 
     if (g_login_only) {
-        auto colon = g_login_credentials.find(':');
-        if (colon == std::string::npos) {
-            LOG_ERROR("invalid login format, expected user:pass");
-            return 1;
+        std::string username;
+        std::string password;
+        if (g_login_from_stdin) {
+            if (!g_login_credentials.empty()) {
+                LOG_ERROR("--login and --login-stdin cannot be used together");
+                return 1;
+            }
+            LOG_INFO("waiting for username and password on stdin");
+            if (!read_stdin_line(username, 512, false) || username.empty() ||
+                !read_stdin_line(password, 4096, true) || password.empty()) {
+                LOG_ERROR("failed to read login credentials from stdin");
+                return 1;
+            }
+        } else {
+            auto colon = g_login_credentials.find(':');
+            if (colon == std::string::npos) {
+                LOG_ERROR("invalid login format, expected user:pass");
+                return 1;
+            }
+            username = g_login_credentials.substr(0, colon);
+            password = g_login_credentials.substr(colon + 1);
         }
-        std::string username = g_login_credentials.substr(0, colon);
-        std::string password = g_login_credentials.substr(colon + 1);
         set_credentials(username.c_str(), password.c_str());
+        std::fill(password.begin(), password.end(), '\0');
+        std::fill(g_login_credentials.begin(), g_login_credentials.end(), '\0');
+        g_login_credentials.clear();
         g_resolved_device_info = resolve_device_info(username);
 
         LOG_INFO("wrapper-lite login mode");
@@ -553,6 +577,7 @@ int main(int argc, char* argv[]) {
          * heap; isolating login in a child keeps this process's heap intact. */
         pid_t pid = fork();
         if (pid < 0) {
+            set_credentials(nullptr, nullptr);
             LOG_ERROR("fork failed");
             return 1;
         }
@@ -571,6 +596,10 @@ int main(int argc, char* argv[]) {
             }
             _exit(0);
         }
+
+        /* The child owns the live login flow. Do not retain another password
+         * copy in the parent while it waits. */
+        set_credentials(nullptr, nullptr);
 
         int status = 0;
         waitpid(pid, &status, 0);

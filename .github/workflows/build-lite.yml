@@ -209,11 +209,13 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          set +e  # each bundle sub-step is best-effort; report but never fail
-          cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/ 2>/dev/null || true
+          set -euo pipefail
           if [[ "${{ runner.os }}" == "macOS" ]]; then
-            cp -R "$(brew --prefix)/share/qemu/"* dist/qemu/bin/ 2>/dev/null || true
+            cp -R "$(brew --prefix qemu)/share/qemu/." dist/qemu/bin/
+            bash .github/scripts/bundle-macos-qemu.sh "$(command -v qemu-system-x86_64)" dist/qemu
+            codesign --force --sign - dist/wrapper-lite-qemu
           else
+            cp "$(command -v qemu-system-x86_64)" dist/qemu/bin/
             # bundle QEMU firmware + SeaBIOS + option ROMs so the launcher's
             # `-L dist/qemu/bin` is self-contained
             cp -R /usr/share/qemu/. dist/qemu/bin/ 2>/dev/null || true
@@ -286,6 +288,59 @@ jobs:
         with:
           name: wrapper-lite-qemu-${{ matrix.artifact_suffix }}
           path: dist
+
+  verify-qemu-package-macos:
+    name: Verify wrapper-lite-qemu (macos-aarch64)
+    needs: build-wrapper-lite-qemu
+    runs-on: macos-14
+    steps:
+      - name: Download the packaged launcher
+        uses: actions/download-artifact@v8
+        with:
+          name: wrapper-lite-qemu-macos-aarch64
+          path: pkg
+
+      - name: Restore executable bits
+        run: |
+          set -euo pipefail
+          chmod +x pkg/wrapper-lite-qemu
+          chmod +x pkg/qemu/bin/qemu-system-x86_64
+
+      - name: Verify self-contained load paths and signatures
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' binary; do
+            file "$binary" | grep -q 'Mach-O' || continue
+            codesign --verify --strict "$binary"
+            bad="$(otool -L "$binary" | tail -n +2 | awk '{print $1}' | grep -Ev '^(@|/System/Library/|/usr/lib/)' || true)"
+            if [[ -n "$bad" ]]; then
+              echo "::error::$binary retains external dependencies: $bad"
+              exit 1
+            fi
+          done < <(find pkg/qemu/bin pkg/qemu/lib -type f -print0)
+          codesign --verify --strict pkg/wrapper-lite-qemu
+          pkg/qemu/bin/qemu-system-x86_64 --version
+
+      - name: Boot the guest through the launcher and query /status
+        run: |
+          set -euo pipefail
+          ( cd pkg && ./wrapper-lite-qemu --accel tcg --host-port 12340 > qemu.log 2>&1 & )
+          ok=""
+          for _ in $(seq 1 150); do
+            if curl -fsS --max-time 3 http://127.0.0.1:12340/status > status.json 2>/dev/null; then
+              ok=1; break
+            fi
+            sleep 2
+          done
+          tail -n 30 pkg/qemu.log || true
+          cat status.json 2>/dev/null || true
+          [[ -n "$ok" ]]
+          grep -q '"code":0' status.json
+          grep -q 'qemu=.*qemu/bin/qemu-system-x86_64' pkg/qemu.log
+
+      - name: Stop the guest
+        if: always()
+        run: pkill -f wrapper-lite-qemu || true
 
   # Runs the packaged launcher on a glibc that is *different* from the build
   # runner's. The package is assembled on ubuntu-22.04 (oldest supported

@@ -32,6 +32,7 @@ bool g_ssl_verify_disabled = false;
 bool g_ssl_verify_disabled = true;
 #endif
 bool g_code_from_file = false;
+bool g_code_from_stdin = false;
 
 extern const char* const fairplayCert;
 extern void* _ZTVN17storeservicescore14DialogHandlerE;

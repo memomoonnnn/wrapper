@@ -221,29 +221,6 @@ static void writeArgsFile(const std::string& path, const std::vector<std::string
 }
 
 
-static std::string base64Encode(const std::string& data) {
-    static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    out.reserve((data.size() + 2) / 3 * 4);
-    size_t i = 0;
-    for (; i + 2 < data.size(); i += 3) {
-        unsigned n = ((unsigned char)data[i] << 16) | ((unsigned char)data[i+1] << 8) | (unsigned char)data[i+2];
-        out += table[(n >> 18) & 63];
-        out += table[(n >> 12) & 63];
-        out += table[(n >> 6) & 63];
-        out += table[n & 63];
-    }
-    if (i < data.size()) {
-        unsigned n = (unsigned char)data[i] << 16;
-        if (i + 1 < data.size()) n |= (unsigned char)data[i+1] << 8;
-        out += table[(n >> 18) & 63];
-        out += table[(n >> 12) & 63];
-        out += (i + 1 < data.size()) ? table[(n >> 6) & 63] : '=';
-        out += (i + 1 < data.size()) ? table[n & 63] : '=';
-    }
-    return out;
-}
-
 static std::vector<std::string> buildQemuArgs(const std::string& qemuBin,
                                               const std::string& accel,
                                               const std::string& dir,
@@ -280,12 +257,9 @@ static std::vector<std::string> buildQemuArgs(const std::string& qemuBin,
             if (existing && *existing) libPath = libPath + ":" + existing;
             setenv("LD_LIBRARY_PATH", libPath.c_str(), 1);
         }
-        /* QEMU accel/device modules (accel-tcg-*.so, ...) are looked up via
-           the QEMU_MODULE_DIR env var; point it at the bundled modules. */
-        if (fileExists(dir + "/bin/accel-tcg-x86_64.so") ||
-            fileExists(dir + "/bin/accel-tcg-i386.so")) {
-            setenv("QEMU_MODULE_DIR", (dir + "/bin").c_str(), 1);
-        }
+        /* QEMU accel/device modules are platform-specific (.so/.dylib) and
+           looked up through QEMU_MODULE_DIR. Packages keep them in bin. */
+        setenv("QEMU_MODULE_DIR", (dir + "/bin").c_str(), 1);
     }
 #endif
     args.push_back("-accel");
@@ -312,18 +286,8 @@ static std::vector<std::string> buildQemuArgs(const std::string& qemuBin,
     args.push_back(dir + "/vmlinuz-lite-qemu");
     args.push_back("-initrd");
     args.push_back(dir + "/lite-initramfs.cpio.gz");
-    std::string appendStr = "console=ttyS0 quiet net.ifnames=0 biosdevname=0";
-    {
-        std::ifstream af(argsFile, std::ios::binary);
-        std::ostringstream oss;
-        oss << af.rdbuf();
-        std::string content = oss.str();
-        if (!content.empty()) {
-            appendStr += " lite_args_b64=" + base64Encode(content);
-        }
-    }
     args.push_back("-append");
-    args.push_back(appendStr);
+    args.push_back("console=ttyS0 quiet net.ifnames=0 biosdevname=0");
     args.push_back("-display");
     args.push_back("none");
     args.push_back("-serial");
@@ -362,6 +326,10 @@ int main(int argc, char** argv) {
     std::vector<std::string> liteArgs;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
+        if (a == "--login") {
+            std::fprintf(stderr, "[run] --login exposes credentials; use --login-stdin instead\n");
+            return 1;
+        }
         bool wantsValue = (a == "--host" || a == "--host-port" || a == "--guest-port" ||
                            a == "--guest-host" || a == "--memory" || a == "--smp" ||
                            a == "--accel" || a == "--qemu-bin");
