@@ -247,7 +247,7 @@ bool refresh_tokens(std::string& out_storefront, std::string& out_dev_token, std
     } else {
         music = read_token_file(std::string(g_base_dir) + "/MUSIC_TOKEN");
         if (!music.empty()) {
-            LOG_WARN("using cached MUSIC_TOKEN (%.14s...)", music.c_str());
+            LOG_WARN("using cached MUSIC_TOKEN");
         }
     }
 
